@@ -2,38 +2,73 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Mapa de Apiarios y Zonificación</title>
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apiarios irregulares — Ley 13.870</title>
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  
+
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; }
+    html, body { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
     #map { height: 100vh; width: 100%; }
-    
-    /* Estilo de los puntos que caen DENTRO de las geometrías: parpadean */
+
+    /* Puntos destacados: parpadean */
     .punto-destacado {
       animation: parpadeo 1s infinite alternate;
     }
-    
     @keyframes parpadeo {
-      from { fill-opacity: 1; stroke-opacity: 1; }
-      to   { fill-opacity: 0.3; stroke-opacity: 0.3; }
+      from { fill-opacity: 1;   stroke-opacity: 1;   }
+      to   { fill-opacity: 0.3; stroke-opacity: 0.4; }
     }
-    
-    /* Estilo de los puntos FUERA: opacados */
-    .punto-opaco {
-      fill-opacity: 0.25;
-      stroke-opacity: 0.3;
-    }
-    
-    /* Popup más legible */
+
+    /* Popup */
     .leaflet-popup-content {
-      font-family: Arial, sans-serif;
       font-size: 13px;
       line-height: 1.5;
+      min-width: 220px;
     }
-    .leaflet-popup-content b {
+    .leaflet-popup-content b { color: #2c5f2d; }
+    .leaflet-popup-content .titulo {
+      display: block;
+      font-size: 14px;
+      color: #111;
+      margin-bottom: 6px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+    }
+
+    /* Leyenda */
+    .leyenda {
+      background: rgba(255,255,255,0.95);
+      padding: 10px 14px;
+      border-radius: 6px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.3);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .leyenda h4 {
+      margin: 0 0 6px 0;
+      font-size: 13px;
+      color: #2c5f2d;
+    }
+    .leyenda .item { display: flex; align-items: center; gap: 8px; }
+    .leyenda .simbolo {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 1px solid #fff;
+      box-shadow: 0 0 0 1px #666;
+    }
+    .leyenda .simbolo.amarillo { background: #ffcc00; }
+    .leyenda .simbolo.verde    { background: rgba(0,255,136,0.3); border: 1px solid #00ff88; border-radius: 2px; }
+
+    /* Panel contador */
+    .contador {
+      background: rgba(255,255,255,0.95);
+      padding: 8px 14px;
+      border-radius: 6px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.3);
+      font-size: 13px;
+      font-weight: bold;
       color: #2c5f2d;
     }
   </style>
@@ -47,121 +82,134 @@
 
   <script>
     // ============================================================
-    // 1. INICIALIZAR EL MAPA CON CAPA SATELITAL
+    // 1. MAPA Y CAPAS BASE
     // ============================================================
-    const map = L.map('map').setView([-30.9, -61.0], 8); // Ajusta el centro y zoom a tu zona
+    const map = L.map('map', {
+      zoomControl: true,
+      preferCanvas: true       // mejor rendimiento con muchos puntos
+    }).setView([-30.9, -61.0], 8);
 
-    // Capa satelital de Esri (gratuita, sin API key)
+    // Satélite Esri
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
-        attribution: 'Tiles © Esri — Fuente: Esri, Maxar, Earthstar Geographics',
+        attribution: 'Tiles © Esri — Esri, Maxar, Earthstar Geographics',
         maxZoom: 19
       }
     ).addTo(map);
 
-    // Opcional: capa de etiquetas encima del satélite
+    // Etiquetas de referencia encima del satélite
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19, opacity: 0.8 }
+      { maxZoom: 19, opacity: 0.85 }
     ).addTo(map);
 
-
     // ============================================================
-    // 2. CARGAR LAS GEOMETRÍAS (ZONIFICACIÓN)
+    // 2. ZONIFICACIÓN (polígonos)
     // ============================================================
-    let poligonos = null;
-    let capaPoligonos = L.geoJSON(null, {
+    const capaPoligonos = L.geoJSON(null, {
       style: {
-        color: '#00ff88',       // borde verde brillante
+        color: '#00ff88',
         weight: 2,
         fillColor: '#00ff88',
         fillOpacity: 0.10
+      },
+      onEachFeature: (feature, layer) => {
+        // Popup opcional del polígono (por si tenés atributos útiles)
+        if (feature.properties && feature.properties.nombre) {
+          layer.bindPopup(`<b>Zona:</b> ${feature.properties.nombre}`);
+        }
       }
     }).addTo(map);
 
-    // Variable global para almacenar la unión de todos los polígonos
-    let geometriaUnion = null;
-
-    fetch('zonificacion.geojson')
-      .then(res => res.json())
-      .then(data => {
-        // Agregar polígonos al mapa
-        capaPoligonos.addData(data);
-        
-        // Unir todas las geometrías en una sola para hacer la prueba "dentro/fuera"
-        // Usamos Turf.js (lo cargamos abajo) para unir todos los polígonos
-        const features = data.features;
-        if (features.length > 0) {
-          let union = features[0];
-          for (let i = 1; i < features.length; i++) {
-            union = turf.union(union, features[i]);
-          }
-          geometriaUnion = union;
-        }
-        
-        // Después de cargar los polígonos, cargamos los puntos
-        cargarPuntos();
-      })
-      .catch(err => console.error('Error cargando zonificación:', err));
-
+    // ============================================================
+    // 3. APIARIOS IRREGULARES (puntos que parpadean)
+    // ============================================================
+    const capaApiarios = L.geoJSON(null, {
+      pointToLayer: (feature, latlng) => {
+        return L.circleMarker(latlng, {
+          radius: 7,
+          color: '#ffffff',
+          weight: 1.5,
+          fillColor: '#ffcc00',
+          fillOpacity: 1,
+          className: 'punto-destacado'
+        });
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties || {};
+        const html = `
+          <span class="titulo"><b>${p['Razón Social'] || 'Sin nombre'}</b></span>
+          <b>N° Apiario:</b> ${p['Nş Apiario'] || '-'}<br>
+          <b>Colmenas:</b> ${p['Cant. Colmenas'] || '-'}<br>
+          <b>Provincia:</b> ${p['Provincia'] || '-'}<br>
+          <b>Departamento:</b> ${p['Departamento'] || '-'}<br>
+          <b>CUIT:</b> ${p['Cuit'] || '-'}<br>
+          <b>Teléfono:</b> ${p['Teléfono'] || '-'}<br>
+          <b>Email:</b> ${p['Email'] || '-'}
+        `;
+        layer.bindPopup(html);
+        layer.bindTooltip(p['Razón Social'] || '', { sticky: true });
+      }
+    }).addTo(map);
 
     // ============================================================
-    // 3. CARGAR LOS PUNTOS (APIARIOS) Y CLASIFICARLOS
+    // 4. CARGAR LOS GEOJSON
     // ============================================================
-    function cargarPuntos() {
-      fetch('apiarios.geojson')
-        .then(res => res.json())
-        .then(data => {
-          data.features.forEach(feature => {
-            const coords = feature.geometry.coordinates;
-            const props = feature.properties;
-            
-            // Determinar si el punto está dentro de alguna geometría
-            let dentro = false;
-            if (geometriaUnion) {
-              dentro = turf.booleanPointInPolygon(
-                turf.point(coords),
-                geometriaUnion
-              );
-            }
-            
-            // Crear el marcador
-            const marcador = L.circleMarker([coords[1], coords[0]], {
-              radius: 6,
-              color: '#ffffff',
-              weight: 1,
-              fillColor: dentro ? '#ffcc00' : '#999999',
-              fillOpacity: 1,
-              className: dentro ? 'punto-destacado' : 'punto-opaco'
-            });
-            
-            // Popup con los datos
-            const popupHTML = `
-              <b>${props['Razón Social'] || 'Sin nombre'}</b><br>
-              <b>N° Apiario:</b> ${props['Nş Apiario'] || '-'}<br>
-              <b>Colmenas:</b> ${props['Cant. Colmenas'] || '-'}<br>
-              <b>Provincia:</b> ${props['Provincia'] || '-'}<br>
-              <b>Departamento:</b> ${props['Departamento'] || '-'}<br>
-              <b>CUIT:</b> ${props['Cuit'] || '-'}<br>
-              <b>Teléfono:</b> ${props['Teléfono'] || '-'}<br>
-              <b>Email:</b> ${props['Email'] || '-'}
-            `;
-            marcador.bindPopup(popupHTML);
-            
-            marcador.addTo(map);
-          });
-          
-          // Ajustar el zoom a todos los datos
-          const grupoTodo = L.featureGroup([capaPoligonos]).getBounds();
-          map.fitBounds(grupoTodo);
-        })
-        .catch(err => console.error('Error cargando apiarios:', err));
-    }
+    Promise.all([
+      fetch('zonificacion.geojson').then(r => r.json()),
+      fetch('apiarios.geojson').then(r => r.json())
+    ])
+    .then(([zonif, apiar]) => {
+      capaPoligonos.addData(zonif);
+      capaApiarios.addData(apiar);
+
+      // Encuadrar el mapa a los datos cargados
+      const grupo = L.featureGroup([capaPoligonos, capaApiarios]);
+      if (grupo.getLayers().length > 0) {
+        map.fitBounds(grupo.getBounds(), { padding: [30, 30] });
+      }
+
+      // Actualizar contador
+      const total = apiar.features.length;
+      document.getElementById('total-apiarios').textContent = total;
+
+      console.log(`Cargados ${total} apiarios irregulares.`);
+    })
+    .catch(err => console.error('Error cargando datos:', err));
+
+    // ============================================================
+    // 5. LEYENDA
+    // ============================================================
+    const leyenda = L.control({ position: 'bottomright' });
+    leyenda.onAdd = function () {
+      const div = L.DomUtil.create('div', 'leyenda');
+      div.innerHTML = `
+        <h4>Referencias</h4>
+        <div class="item">
+          <span class="simbolo amarillo"></span>
+          <span>Apiario irregular (parpadea)</span>
+        </div>
+        <div class="item">
+          <span class="simbolo verde"></span>
+          <span>Zonificación urbana</span>
+        </div>
+      `;
+      return div;
+    };
+    leyenda.addTo(map);
+
+    // ============================================================
+    // 6. CONTADOR
+    // ============================================================
+    const contador = L.control({ position: 'topright' });
+    contador.onAdd = function () {
+      const div = L.DomUtil.create('div', 'contador');
+      div.innerHTML = `Apiarios irregulares: <span id="total-apiarios">…</span>`;
+      return div;
+    };
+    contador.addTo(map);
   </script>
-
-  <!-- Turf.js para operaciones geoespaciales (punto dentro de polígono) -->
-  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
 </body>
 </html>
