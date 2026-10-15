@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mapa de Apiarios y Zonificación</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    #map { height: 100vh; width: 100%; }
+    
+    /* Estilo de los puntos que caen DENTRO de las geometrías: parpadean */
+    .punto-destacado {
+      animation: parpadeo 1s infinite alternate;
+    }
+    
+    @keyframes parpadeo {
+      from { fill-opacity: 1; stroke-opacity: 1; }
+      to   { fill-opacity: 0.3; stroke-opacity: 0.3; }
+    }
+    
+    /* Estilo de los puntos FUERA: opacados */
+    .punto-opaco {
+      fill-opacity: 0.25;
+      stroke-opacity: 0.3;
+    }
+    
+    /* Popup más legible */
+    .leaflet-popup-content {
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .leaflet-popup-content b {
+      color: #2c5f2d;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // ============================================================
+    // 1. INICIALIZAR EL MAPA CON CAPA SATELITAL
+    // ============================================================
+    const map = L.map('map').setView([-30.9, -61.0], 8); // Ajusta el centro y zoom a tu zona
+
+    // Capa satelital de Esri (gratuita, sin API key)
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Tiles © Esri — Fuente: Esri, Maxar, Earthstar Geographics',
+        maxZoom: 19
+      }
+    ).addTo(map);
+
+    // Opcional: capa de etiquetas encima del satélite
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19, opacity: 0.8 }
+    ).addTo(map);
+
+
+    // ============================================================
+    // 2. CARGAR LAS GEOMETRÍAS (ZONIFICACIÓN)
+    // ============================================================
+    let poligonos = null;
+    let capaPoligonos = L.geoJSON(null, {
+      style: {
+        color: '#00ff88',       // borde verde brillante
+        weight: 2,
+        fillColor: '#00ff88',
+        fillOpacity: 0.10
+      }
+    }).addTo(map);
+
+    // Variable global para almacenar la unión de todos los polígonos
+    let geometriaUnion = null;
+
+    fetch('zonificacion.geojson')
+      .then(res => res.json())
+      .then(data => {
+        // Agregar polígonos al mapa
+        capaPoligonos.addData(data);
+        
+        // Unir todas las geometrías en una sola para hacer la prueba "dentro/fuera"
+        // Usamos Turf.js (lo cargamos abajo) para unir todos los polígonos
+        const features = data.features;
+        if (features.length > 0) {
+          let union = features[0];
+          for (let i = 1; i < features.length; i++) {
+            union = turf.union(union, features[i]);
+          }
+          geometriaUnion = union;
+        }
+        
+        // Después de cargar los polígonos, cargamos los puntos
+        cargarPuntos();
+      })
+      .catch(err => console.error('Error cargando zonificación:', err));
+
+
+    // ============================================================
+    // 3. CARGAR LOS PUNTOS (APIARIOS) Y CLASIFICARLOS
+    // ============================================================
+    function cargarPuntos() {
+      fetch('apiarios.geojson')
+        .then(res => res.json())
+        .then(data => {
+          data.features.forEach(feature => {
+            const coords = feature.geometry.coordinates;
+            const props = feature.properties;
+            
+            // Determinar si el punto está dentro de alguna geometría
+            let dentro = false;
+            if (geometriaUnion) {
+              dentro = turf.booleanPointInPolygon(
+                turf.point(coords),
+                geometriaUnion
+              );
+            }
+            
+            // Crear el marcador
+            const marcador = L.circleMarker([coords[1], coords[0]], {
+              radius: 6,
+              color: '#ffffff',
+              weight: 1,
+              fillColor: dentro ? '#ffcc00' : '#999999',
+              fillOpacity: 1,
+              className: dentro ? 'punto-destacado' : 'punto-opaco'
+            });
+            
+            // Popup con los datos
+            const popupHTML = `
+              <b>${props['Razón Social'] || 'Sin nombre'}</b><br>
+              <b>N° Apiario:</b> ${props['Nş Apiario'] || '-'}<br>
+              <b>Colmenas:</b> ${props['Cant. Colmenas'] || '-'}<br>
+              <b>Provincia:</b> ${props['Provincia'] || '-'}<br>
+              <b>Departamento:</b> ${props['Departamento'] || '-'}<br>
+              <b>CUIT:</b> ${props['Cuit'] || '-'}<br>
+              <b>Teléfono:</b> ${props['Teléfono'] || '-'}<br>
+              <b>Email:</b> ${props['Email'] || '-'}
+            `;
+            marcador.bindPopup(popupHTML);
+            
+            marcador.addTo(map);
+          });
+          
+          // Ajustar el zoom a todos los datos
+          const grupoTodo = L.featureGroup([capaPoligonos]).getBounds();
+          map.fitBounds(grupoTodo);
+        })
+        .catch(err => console.error('Error cargando apiarios:', err));
+    }
+  </script>
+
+  <!-- Turf.js para operaciones geoespaciales (punto dentro de polígono) -->
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+</body>
+</html>
