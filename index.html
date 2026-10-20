@@ -5,10 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Restricciones Apícolas - Ley 13.870</title>
 
-  <!-- 1. Estilos de Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  
-  <!-- 2. Estilos del Clustering -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
@@ -18,7 +15,6 @@
     
     #errores { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(255,0,0,0.8); color: white; padding: 10px; border-radius: 5px; display: none; }
 
-    /* Animación de parpadeo para los puntos */
     .punto-destacado { animation: parpadeo 1.6s ease-in-out infinite; }
     @keyframes parpadeo {
       0%   { fill-opacity: 1;    stroke-opacity: 1;   }
@@ -26,12 +22,10 @@
       100% { fill-opacity: 1;    stroke-opacity: 1;   }
     }
 
-    /* Estilos del Popup */
     .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; }
     .leaflet-popup-content b { color: #2c5f2d; }
     .leaflet-popup-content .titulo { display: block; font-size: 14px; color: #111; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
 
-    /* Estilos de Leyenda y Contador */
     .leyenda, .contador {
       background: rgba(255,255,255,0.95); padding: 10px 14px; border-radius: 6px;
       box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 13px; line-height: 1.6;
@@ -40,9 +34,9 @@
     .leyenda .item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .leyenda .simbolo { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #fff; box-shadow: 0 0 0 1px #666; }
     .leyenda .simbolo.amarillo { background: #ffcc00; }
-    .leyenda .simbolo.rojo { background: rgba(255, 60, 0, 0.5); border: 1px solid #ff3c00; border-radius: 2px; }
-    .leyenda .simbolo.azul { background: rgba(0, 150, 255, 0.5); border: 1px solid #0096ff; border-radius: 2px; }
-    .leyenda .simbolo.violeta { background: rgba(153, 51, 255, 0.5); border: 1px solid #9933ff; border-radius: 2px; }
+    .leyenda .simbolo.rojo { background: rgba(255, 0, 0, 0.6); border: 1px solid #ff0000; border-radius: 2px; }
+    .leyenda .simbolo.azul { background: rgba(0, 119, 255, 0.6); border: 1px solid #0077ff; border-radius: 2px; }
+    .leyenda .simbolo.violeta { background: rgba(170, 0, 255, 0.6); border: 1px solid #aa00ff; border-radius: 2px; }
     .contador { font-weight: bold; color: #2c5f2d; }
   </style>
 </head>
@@ -51,25 +45,18 @@
   <div id="map"></div>
   <div id="errores"></div>
 
-  <!-- 1. Primero la librería base de Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
-  <!-- 2. Segundo el plugin de Clustering (depende de Leaflet) -->
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-  <!-- 3. Tu código personalizado (se ejecuta al final, cuando L ya está definido) -->
   <script>
-    // Función para mostrar errores en pantalla
     function mostrarError(mensaje) {
       const div = document.getElementById('errores');
       div.style.display = 'block';
       div.innerHTML = '⚠️ ' + mensaje;
     }
 
-    // Inicialización del mapa (preferCanvas ayuda con el rendimiento de los polígonos)
     const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([-30.9, -61.0], 8);
 
-    // Capa base Satelital
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri', maxZoom: 19
     }).addTo(map);
@@ -78,25 +65,37 @@
     const capaPoligonos = L.geoJSON(null, {
       style: (feature) => {
         const props = feature.properties || {};
-        // Función para detectar si el valor es verdadero sin importar el formato
-        const esVerdadero = (val) => val === true || val === "verdadero" || val === "true" || val === "Verdadero";
-        const esRuta = esVerdadero(props.exd_rutas);
-        const esUrbano = esVerdadero(props.exd_urbano);
+        
+        // AHORA USAMOS LOS NOMBRES CORRECTOS: excl_rutas y excl_urbano
+        const esRuta = props.excl_rutas === true;
+        const esUrbano = props.excl_urbano === true;
 
-        // Colores según el tipo de restricción
-        if (esRuta && !esUrbano) return { color: '#ff3c00', weight: 1.5, fillColor: '#ff3c00', fillOpacity: 0.20 }; // Rojo (Ruta)
-        if (!esRuta && esUrbano) return { color: '#0096ff', weight: 1.5, fillColor: '#0096ff', fillOpacity: 0.25 }; // Azul (Urbano)
-        if (esRuta && esUrbano) return { color: '#9933ff', weight: 1.5, fillColor: '#9933ff', fillOpacity: 0.30 }; // Violeta (Ambos)
-        return { color: '#00ff88', weight: 1.5, fillColor: '#00ff88', fillOpacity: 0.20 }; // Verde (Fallback)
+        if (esRuta && !esUrbano) {
+            return { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.4 }; // Rojo (Ruta)
+        } 
+        if (!esRuta && esUrbano) {
+            return { color: '#0077ff', weight: 2, fillColor: '#0077ff', fillOpacity: 0.4 }; // Azul (Urbano)
+        } 
+        if (esRuta && esUrbano) {
+            return { color: '#aa00ff', weight: 2, fillColor: '#aa00ff', fillOpacity: 0.5 }; // Violeta (Ambos)
+        }
+        
+        // Fallback por si hay un error en los datos
+        return { color: '#00ff00', weight: 1, fillColor: '#00ff00', fillOpacity: 0.2 }; 
+      },
+      onEachFeature: (feature, layer) => {
+        const p = feature.properties || {};
+        layer.bindPopup(`
+          <b>Datos de la geometría (FID ${p.fid || '?'}):</b><br>
+          Restricción Ruta: ${p.excl_rutas ? 'Sí' : 'No'}<br>
+          Restricción Urbano: ${p.excl_urbano ? 'Sí' : 'No'}
+        `);
       }
     }).addTo(map);
 
     // --- CAPA DE APIARIOS (Puntos con Clustering) ---
     const capaApiarios = L.markerClusterGroup({
-      maxClusterRadius: 50, 
-      spiderfyOnMaxZoom: true, 
-      showCoverageOnHover: false, 
-      zoomToBoundsOnClick: true
+      maxClusterRadius: 50, spiderfyOnMaxZoom: true, showCoverageOnHover: false, zoomToBoundsOnClick: true
     }).addTo(map);
 
     // --- CARGA DE ARCHIVOS GEOJSON ---
@@ -108,15 +107,13 @@
     Promise.allSettled(promesas).then((resultados) => {
       let datosCargados = false;
 
-      // 1. Procesar Zonificación
       if (resultados[0].status === 'fulfilled') {
         capaPoligonos.addData(resultados[0].value);
         datosCargados = true;
       } else {
-        mostrarError("No se pudo cargar 'zonificacion.geojson'. Verifica que el archivo exista.");
+        mostrarError("No se pudo cargar 'zonificacion.geojson'.");
       }
 
-      // 2. Procesar Apiarios
       if (resultados[1].status === 'fulfilled') {
         const geoJsonApiarios = L.geoJSON(resultados[1].value, {
           pointToLayer: (feature, latlng) => {
@@ -142,10 +139,9 @@
         document.getElementById('total-apiarios').textContent = resultados[1].value.features.length;
         datosCargados = true;
       } else {
-        mostrarError("No se pudo cargar 'apiarios.geojson'. Verifica que el archivo exista.");
+        mostrarError("No se pudo cargar 'apiarios.geojson'.");
       }
 
-      // 3. Encuadrar el mapa a los datos cargados
       if (datosCargados) {
         const grupo = L.featureGroup([capaPoligonos, capaApiarios]);
         if (grupo.getLayers().length > 0) map.fitBounds(grupo.getBounds(), { padding: [30, 30] });
