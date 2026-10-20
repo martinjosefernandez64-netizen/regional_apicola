@@ -3,82 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Apiarios irregulares — Ley 13.870</title>
+  <title>Restricciones Apícolas - Ley 13.870</title>
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
   <style>
     html, body { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
     #map { height: 100vh; width: 100%; }
 
-    /* Puntos destacados: parpadean */
-   .punto-destacado {
-     animation: parpadeo 1.6s ease-in-out infinite;
-   }
-
-   @keyframes parpadeo {
-     0%   { fill-opacity: 1;    stroke-opacity: 1;    r: 7; }
-     50%  { fill-opacity: 0.35; stroke-opacity: 0.5;  r: 8; }
-     100% { fill-opacity: 1;    stroke-opacity: 1;    r: 7; }
-   }
-    /* Popup */
-    .leaflet-popup-content {
-      font-size: 13px;
-      line-height: 1.5;
-      min-width: 220px;
+    .punto-destacado { animation: parpadeo 1.6s ease-in-out infinite; }
+    @keyframes parpadeo {
+      0%   { fill-opacity: 1;    stroke-opacity: 1;   }
+      50%  { fill-opacity: 0.35; stroke-opacity: 0.5; }
+      100% { fill-opacity: 1;    stroke-opacity: 1;   }
     }
+
+    .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; }
     .leaflet-popup-content b { color: #2c5f2d; }
     .leaflet-popup-content .titulo {
-      display: block;
-      font-size: 14px;
-      color: #111;
-      margin-bottom: 6px;
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 4px;
+      display: block; font-size: 14px; color: #111; margin-bottom: 6px; 
+      border-bottom: 1px solid #ddd; padding-bottom: 4px;
     }
 
-    /* Leyenda */
-    .leyenda {
-      background: rgba(255,255,255,0.95);
-      padding: 10px 14px;
-      border-radius: 6px;
-      box-shadow: 0 1px 6px rgba(0,0,0,0.3);
-      font-size: 13px;
-      line-height: 1.6;
+    .leyenda, .contador {
+      background: rgba(255,255,255,0.95); padding: 10px 14px; border-radius: 6px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 13px; line-height: 1.6;
     }
-    .leyenda h4 {
-      margin: 0 0 6px 0;
-      font-size: 13px;
-      color: #2c5f2d;
-    }
-    .leyenda .item { display: flex; align-items: center; gap: 8px; }
+    .leyenda h4 { margin: 0 0 6px 0; font-size: 13px; color: #2c5f2d; }
+    .leyenda .item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
     .leyenda .simbolo {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      border: 1px solid #fff;
-      box-shadow: 0 0 0 1px #666;
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 1px solid #fff; box-shadow: 0 0 0 1px #666;
     }
     .leyenda .simbolo.amarillo { background: #ffcc00; }
-    .leyenda .simbolo.verde    { background: rgba(0,255,136,0.3); border: 1px solid #00ff88; border-radius: 2px; }
-
-    /* Panel contador */
-    .contador {
-      background: rgba(255,255,255,0.95);
-      padding: 8px 14px;
-      border-radius: 6px;
-      box-shadow: 0 1px 6px rgba(0,0,0,0.3);
-      font-size: 13px;
-      font-weight: bold;
-      color: #2c5f2d;
-    }
+    .leyenda .simbolo.rojo { background: rgba(255, 60, 0, 0.5); border: 1px solid #ff3c00; border-radius: 2px; }
+    .leyenda .simbolo.azul { background: rgba(0, 150, 255, 0.5); border: 1px solid #0096ff; border-radius: 2px; }
+    .contador { font-weight: bold; color: #2c5f2d; }
   </style>
 </head>
 <body>
 
   <div id="map"></div>
-
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
@@ -87,100 +55,121 @@
     // ============================================================
     const map = L.map('map', {
       zoomControl: true,
-      // preferCanvas: true  ← eliminada
+      preferCanvas: true 
     }).setView([-30.9, -61.0], 8);
 
-    // Satélite Esri
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      {
-        attribution: 'Tiles © Esri — Esri, Maxar, Earthstar Geographics',
-        maxZoom: 19
-      }
+      { attribution: 'Tiles © Esri', maxZoom: 19 }
     ).addTo(map);
 
-    // Etiquetas de referencia encima del satélite
     L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
       { maxZoom: 19, opacity: 0.85 }
     ).addTo(map);
 
     // ============================================================
-    // 2. ZONIFICACIÓN (polígonos)
+    // 2. ZONIFICACIÓN (Lógica de colores según atributos)
     // ============================================================
     const capaPoligonos = L.geoJSON(null, {
-      style: {
-        color: '#00ff88',
-        weight: 2,
-        fillColor: '#00ff88',
-        fillOpacity: 0.10
+      style: (feature) => {
+        const props = feature.properties || {};
+        
+        // Función auxiliar para detectar si el campo es verdadero
+        const esVerdadero = (val) => val === true || val === "verdadero" || val === "true" || val === "Verdadero";
+
+        const esRuta = esVerdadero(props.exd_rutas);
+        const esUrbano = esVerdadero(props.exd_urbano);
+
+        // Si es SOLO ruta
+        if (esRuta && !esUrbano) {
+          return { color: '#ff3c00', weight: 1.5, fillColor: '#ff3c00', fillOpacity: 0.20 }; // Rojo (Ruta)
+        } 
+        // Si es SOLO urbano
+        else if (!esRuta && esUrbano) {
+          return { color: '#0096ff', weight: 1.5, fillColor: '#0096ff', fillOpacity: 0.25 }; // Azul (Urbano)
+        } 
+        // Si es AMBOS (se cruzan)
+        else if (esRuta && esUrbano) {
+          return { color: '#9933ff', weight: 1.5, fillColor: '#9933ff', fillOpacity: 0.30 }; // Violeta (Ambos)
+        }
+        
+        // Por defecto, si hay un error en los datos, verde suave
+        return { color: '#00ff88', weight: 1, fillColor: '#00ff88', fillOpacity: 0.10 };
       },
       onEachFeature: (feature, layer) => {
-        // Popup opcional del polígono (por si tenés atributos útiles)
-        if (feature.properties && feature.properties.nombre) {
-          layer.bindPopup(`<b>Zona:</b> ${feature.properties.nombre}`);
-        }
+        // Popup opcional al hacer clic en el polígono
+        const props = feature.properties || {};
+        layer.bindPopup(`
+          <b>Restricción</b><br>
+          Cerca de Ruta: ${props.exd_rutas}<br>
+          Cerca de Urbano: ${props.exd_urbano}
+        `);
       }
     }).addTo(map);
 
     // ============================================================
-    // 3. APIARIOS IRREGULARES (puntos que parpadean)
+    // 3. APIARIOS IRREGULARES (con Clustering)
     // ============================================================
-    const capaApiarios = L.geoJSON(null, {
-      pointToLayer: (feature, latlng) => {
-        return L.circleMarker(latlng, {
-          radius: 7,
-          color: '#ffffff',
-          weight: 1.5,
-          fillColor: '#ffcc00',
-          fillOpacity: 1,
-          className: 'punto-destacado'
-        });
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties || {};
-        const html = `
-          <span class="titulo"><b>${p['Razón Social'] || 'Sin nombre'}</b></span>
-          <b>N° Apiario:</b> ${p['Nş Apiario'] || '-'}<br>
-          <b>Colmenas:</b> ${p['Cant. Colmenas'] || '-'}<br>
-          <b>Provincia:</b> ${p['Provincia'] || '-'}<br>
-          <b>Departamento:</b> ${p['Departamento'] || '-'}<br>
-          <b>CUIT:</b> ${p['Cuit'] || '-'}<br>
-          <b>Teléfono:</b> ${p['Teléfono'] || '-'}<br>
-          <b>Email:</b> ${p['Email'] || '-'}
-        `;
-        layer.bindPopup(html);
-        layer.bindTooltip(p['Razón Social'] || '', { sticky: true });
-      }
+    const capaApiarios = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true
     }).addTo(map);
 
     // ============================================================
     // 4. CARGAR LOS GEOJSON
     // ============================================================
     Promise.all([
-      fetch('zonificacion.geojson').then(r => r.json()),
+      fetch('zonificacion.geojson').then(r => r.json()), 
       fetch('apiarios.geojson').then(r => r.json())
     ])
     .then(([zonif, apiar]) => {
+      
       capaPoligonos.addData(zonif);
-      capaApiarios.addData(apiar);
 
-      // Encuadrar el mapa a los datos cargados
+      const geoJsonApiarios = L.geoJSON(apiar, {
+        pointToLayer: (feature, latlng) => {
+          return L.circleMarker(latlng, {
+            radius: 7,
+            color: '#ffffff',
+            weight: 1.5,
+            fillColor: '#ffcc00',
+            fillOpacity: 1,
+            className: 'punto-destacado'
+          });
+        },
+        onEachFeature: (feature, layer) => {
+          const p = feature.properties || {};
+          const html = `
+            <span class="titulo"><b>${p['Razón Social'] || 'Sin nombre'}</b></span>
+            <b>N° Apiario:</b> ${p['Nş Apiario'] || '-'}<br>
+            <b>Colmenas:</b> ${p['Cant. Colmenas'] || '-'}<br>
+            <b>Provincia:</b> ${p['Provincia'] || '-'}<br>
+            <b>Departamento:</b> ${p['Departamento'] || '-'}<br>
+            <b>CUIT:</b> ${p['Cuit'] || '-'}<br>
+            <b>Teléfono:</b> ${p['Teléfono'] || '-'}<br>
+            <b>Email:</b> ${p['Email'] || '-'}
+          `;
+          layer.bindPopup(html);
+          layer.bindTooltip(p['Razón Social'] || '', { sticky: true });
+        }
+      });
+      
+      capaApiarios.addLayer(geoJsonApiarios);
+
       const grupo = L.featureGroup([capaPoligonos, capaApiarios]);
       if (grupo.getLayers().length > 0) {
         map.fitBounds(grupo.getBounds(), { padding: [30, 30] });
       }
 
-      // Actualizar contador
-      const total = apiar.features.length;
-      document.getElementById('total-apiarios').textContent = total;
-
-      console.log(`Cargados ${total} apiarios irregulares.`);
+      document.getElementById('total-apiarios').textContent = apiar.features.length;
     })
     .catch(err => console.error('Error cargando datos:', err));
 
     // ============================================================
-    // 5. LEYENDA
+    // 5. LEYENDA ACTUALIZADA
     // ============================================================
     const leyenda = L.control({ position: 'bottomright' });
     leyenda.onAdd = function () {
@@ -189,11 +178,15 @@
         <h4>Referencias</h4>
         <div class="item">
           <span class="simbolo amarillo"></span>
-          <span>Apiario irregular (parpadea)</span>
+          <span>Apiario afectado (en zona)</span>
         </div>
         <div class="item">
-          <span class="simbolo verde"></span>
-          <span>Zonificación urbana</span>
+          <span class="simbolo rojo"></span>
+          <span>Restricción: Cerca de Ruta</span>
+        </div>
+        <div class="item">
+          <span class="simbolo azul"></span>
+          <span>Restricción: Urbana</span>
         </div>
       `;
       return div;
@@ -206,11 +199,10 @@
     const contador = L.control({ position: 'topright' });
     contador.onAdd = function () {
       const div = L.DomUtil.create('div', 'contador');
-      div.innerHTML = `Apiarios irregulares: <span id="total-apiarios">…</span>`;
+      div.innerHTML = `Apiarios afectados: <span id="total-apiarios">…</span>`;
       return div;
     };
     contador.addTo(map);
   </script>
-
 </body>
 </html>
