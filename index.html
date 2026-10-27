@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Restricciones Apícolas - Ley 13.870</title>
 
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  
+  <!-- MarkerCluster CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
@@ -13,8 +16,10 @@
     html, body { height: 100%; margin: 0; padding: 0; font-family: Arial, sans-serif; }
     #map { height: 100vh; width: 100%; }
     
-    #errores { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(255,0,0,0.8); color: white; padding: 10px; border-radius: 5px; display: none; }
+    /* Panel de errores oculto por defecto */
+    #errores { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(255,0,0,0.9); color: white; padding: 10px; border-radius: 5px; display: none; font-weight: bold; }
 
+    /* Animación de parpadeo para los puntos (apiarios) */
     .punto-destacado { animation: parpadeo 1.6s ease-in-out infinite; }
     @keyframes parpadeo {
       0%   { fill-opacity: 1;    stroke-opacity: 1;   }
@@ -22,22 +27,29 @@
       100% { fill-opacity: 1;    stroke-opacity: 1;   }
     }
 
-    .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 220px; }
+    /* Estilos del Popup */
+    .leaflet-popup-content { font-size: 13px; line-height: 1.5; min-width: 240px; }
     .leaflet-popup-content b { color: #2c5f2d; }
     .leaflet-popup-content .titulo { display: block; font-size: 14px; color: #111; margin-bottom: 6px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
 
+    /* Estilos de Leyenda y Contador */
     .leyenda, .contador {
       background: rgba(255,255,255,0.95); padding: 10px 14px; border-radius: 6px;
       box-shadow: 0 1px 6px rgba(0,0,0,0.3); font-size: 13px; line-height: 1.6;
     }
     .leyenda h4 { margin: 0 0 6px 0; font-size: 13px; color: #2c5f2d; }
     .leyenda .item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .leyenda .simbolo { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #fff; box-shadow: 0 0 0 1px #666; }
-    .leyenda .simbolo.amarillo { background: #ffcc00; }
+    .leyenda .simbolo { width: 14px; height: 14px; border: 1px solid #fff; box-shadow: 0 0 0 1px #666; }
+    
+    /* Símbolos de la Leyenda */
+    .leyenda .simbolo.amarillo { background: #ffcc00; border-radius: 50%; }
     .leyenda .simbolo.rojo { background: rgba(255, 0, 0, 0.6); border: 1px solid #ff0000; border-radius: 2px; }
     .leyenda .simbolo.azul { background: rgba(0, 119, 255, 0.6); border: 1px solid #0077ff; border-radius: 2px; }
+    .leyenda .simbolo.naranja { background: rgba(255, 136, 0, 0.6); border: 1px solid #ff8800; border-radius: 2px; }
     .leyenda .simbolo.violeta { background: rgba(170, 0, 255, 0.6); border: 1px solid #aa00ff; border-radius: 2px; }
-    .contador { font-weight: bold; color: #2c5f2d; }
+    .leyenda .simbolo.marron { background: rgba(139, 69, 19, 0.8); border: 1px solid #8b4513; border-radius: 2px; }
+
+    .contador { font-weight: bold; color: #2c5f2d; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -45,55 +57,89 @@
   <div id="map"></div>
   <div id="errores"></div>
 
+  <!-- 1. Carga de librerías base -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
+  <!-- 2. Lógica del mapa -->
   <script>
+    // Función para mostrar errores en pantalla
     function mostrarError(mensaje) {
       const div = document.getElementById('errores');
       div.style.display = 'block';
       div.innerHTML = '⚠️ ' + mensaje;
     }
 
+    // Inicialización del mapa
     const map = L.map('map', { zoomControl: true, preferCanvas: true }).setView([-30.9, -61.0], 8);
 
+    // Capa Satelital Base
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles © Esri', maxZoom: 19
     }).addTo(map);
 
-    // --- CAPA DE ZONIFICACIÓN (Polígonos) ---
+    // --- CAPA DE ZONIFICACIÓN ---
     const capaPoligonos = L.geoJSON(null, {
       style: (feature) => {
         const props = feature.properties || {};
         
-        // AHORA USAMOS LOS NOMBRES CORRECTOS: excl_rutas y excl_urbano
-        const esRuta = props.excl_rutas === true;
-        const esUrbano = props.excl_urbano === true;
+        // Función robusta para detectar valores booleanos reales (true, "verdadero", 1, etc.)
+        const esVerdadero = (val) => {
+          if (val === null || val === undefined) return false;
+          const str = String(val).toLowerCase().trim();
+          return str === 'true' || str === '1' || str === 'verdadero';
+        };
 
-        if (esRuta && !esUrbano) {
-            return { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.4 }; // Rojo (Ruta)
+        const esRemate = esVerdadero(props.excl_remates);
+        const esRuta = esVerdadero(props.excl_rutas);
+        const esUrbano = esVerdadero(props.excl_urbano);
+
+        // Evaluamos cuántas restricciones se superponen
+        const cantidad = [esRemate, esRuta, esUrbano].filter(Boolean).length;
+
+        // Asignación de colores según la combinación
+        if (cantidad === 3) {
+          // Las 3 restricciones (Marrón)
+          return { color: '#8b4513', weight: 2, fillColor: '#8b4513', fillOpacity: 0.7 };
         } 
-        if (!esRuta && esUrbano) {
-            return { color: '#0077ff', weight: 2, fillColor: '#0077ff', fillOpacity: 0.4 }; // Azul (Urbano)
+        if (esRemate && !esRuta && !esUrbano) {
+          // Solo Remate (Naranja)
+          return { color: '#ff8800', weight: 2, fillColor: '#ff8800', fillOpacity: 0.5 };
         } 
-        if (esRuta && esUrbano) {
-            return { color: '#aa00ff', weight: 2, fillColor: '#aa00ff', fillOpacity: 0.5 }; // Violeta (Ambos)
+        if (esRuta && esUrbano && !esRemate) {
+          // Ruta + Urbano (Violeta)
+          return { color: '#aa00ff', weight: 2, fillColor: '#aa00ff', fillOpacity: 0.5 };
+        } 
+        if (esRuta && !esUrbano && !esRemate) {
+          // Solo Ruta (Rojo)
+          return { color: '#ff0000', weight: 2, fillColor: '#ff0000', fillOpacity: 0.4 };
+        } 
+        if (!esRuta && esUrbano && !esRemate) {
+          // Solo Urbano (Azul)
+          return { color: '#0077ff', weight: 2, fillColor: '#0077ff', fillOpacity: 0.4 };
+        } 
+        if (esRemate && (esRuta || esUrbano)) {
+          // Combinaciones mixtas con Remate (Naranja oscuro)
+          return { color: '#cc5500', weight: 2, fillColor: '#cc5500', fillOpacity: 0.6 };
         }
-        
-        // Fallback por si hay un error en los datos
+
+        // Por defecto (si no tiene nada)
         return { color: '#00ff00', weight: 1, fillColor: '#00ff00', fillOpacity: 0.2 }; 
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties || {};
+        // Popup para auditar los polígonos
         layer.bindPopup(`
-          <b>Datos de la geometría (FID ${p.fid || '?'}):</b><br>
-          Restricción Ruta: ${p.excl_rutas ? 'Sí' : 'No'}<br>
-          Restricción Urbano: ${p.excl_urbano ? 'Sí' : 'No'}
+          <b>Geometría ID: ${p.fid || '?'}</b><br>
+          <hr style="margin: 4px 0;">
+          Remate: ${p.excl_remates ? 'Sí' : 'No'}<br>
+          Ruta: ${p.excl_rutas ? 'Sí' : 'No'}<br>
+          Urbano: ${p.excl_urbano ? 'Sí' : 'No'}
         `);
       }
     }).addTo(map);
 
-    // --- CAPA DE APIARIOS (Puntos con Clustering) ---
+    // --- CAPA DE APIARIOS (Clustering) ---
     const capaApiarios = L.markerClusterGroup({
       maxClusterRadius: 50, spiderfyOnMaxZoom: true, showCoverageOnHover: false, zoomToBoundsOnClick: true
     }).addTo(map);
@@ -107,13 +153,16 @@
     Promise.allSettled(promesas).then((resultados) => {
       let datosCargados = false;
 
+      // 1. Procesar Polígonos
       if (resultados[0].status === 'fulfilled') {
         capaPoligonos.addData(resultados[0].value);
         datosCargados = true;
       } else {
-        mostrarError("No se pudo cargar 'zonificacion.geojson'.");
+        mostrarError("No se pudo cargar 'zonificacion.geojson'. Verifica que exista en el repositorio.");
+        console.error(resultados[0].reason);
       }
 
+      // 2. Procesar Apiarios
       if (resultados[1].status === 'fulfilled') {
         const geoJsonApiarios = L.geoJSON(resultados[1].value, {
           pointToLayer: (feature, latlng) => {
@@ -139,9 +188,11 @@
         document.getElementById('total-apiarios').textContent = resultados[1].value.features.length;
         datosCargados = true;
       } else {
-        mostrarError("No se pudo cargar 'apiarios.geojson'.");
+        mostrarError("No se pudo cargar 'apiarios.geojson'. Verifica que exista en el repositorio.");
+        console.error(resultados[1].reason);
       }
 
+      // 3. Encuadrar el mapa si hay datos
       if (datosCargados) {
         const grupo = L.featureGroup([capaPoligonos, capaApiarios]);
         if (grupo.getLayers().length > 0) map.fitBounds(grupo.getBounds(), { padding: [30, 30] });
@@ -154,10 +205,12 @@
       const div = L.DomUtil.create('div', 'leyenda');
       div.innerHTML = `
         <h4>Referencias</h4>
-        <div class="item"><span class="simbolo amarillo"></span><span>Apiario afectado (Clic para datos)</span></div>
+        <div class="item"><span class="simbolo amarillo"></span><span>Apiario afectado</span></div>
         <div class="item"><span class="simbolo rojo"></span><span>Restricción: Ruta</span></div>
         <div class="item"><span class="simbolo azul"></span><span>Restricción: Urbana</span></div>
-        <div class="item"><span class="simbolo violeta"></span><span>Restricción: Ambas</span></div>
+        <div class="item"><span class="simbolo naranja"></span><span>Restricción: Remate</span></div>
+        <div class="item"><span class="simbolo violeta"></span><span>Restricción: Ruta + Urbano</span></div>
+        <div class="item"><span class="simbolo marron"></span><span>Restricción: Múltiple</span></div>
       `;
       return div;
     };
